@@ -1,6 +1,6 @@
 ---
-title: "Untitled"
-author: "Your Name Goes Here"
+title: "SVM_Lab"
+author: "Yao Liu"
 date: "3/5/2019"
 output: github_document
 ---
@@ -14,13 +14,67 @@ text.
 
     a. Create a training sample that has roughly 80% of the observations. Use
   `set.seed(19823)`.
+```{r libs, message = F, warning = F, include = F}
+library(MASS)
+library(tidyverse)
+library(broom)
+library(caret)     #look for ROC curve
+library(ISLR)
+library(janitor)
+library(plotROC)
+library(kernlab)   #kernel method for SVM
+theme_set(theme_bw())
+```
+
+```{r}
+df <- tbl_df(OJ)
+attach(df)
+set.seed(19823)
+inTraining <- createDataPartition(Purchase, p = .5, list = F )
+training <- df[inTraining, ]
+testing  <- df[-inTraining, ]
+```
+  
     b. Use the `kernlab` package to fit a support vector classifier to the 
   training data using `C = 0.01`. 
+```{r}
+purchase_svm_m1 <- ksvm(Purchase ~ ., data = training,
+                     type = "C-svc", kernel = 'vanilladot', 
+                     C = 0.01, prob.model = T)  
+```
+  
     c. Compute the confusion matrix for the training data. Report the overall 
   error rates, sensitivity, and specificity. 
+```{r}
+confusionMatrix(table(predict(purchase_svm_m1, newdata = testing),testing$Purchase),positive = "MM")
+```
+  
     d. Construct the ROC curve. 
+```{r}
+fits_svc <- predict(purchase_svm_m1, newdata = training, type = "probabilities")
+new_fits <- mutate(training, 
+                   svc_probs = fits_svc[,2],
+                   default = if_else(Purchase == "CH", 0, 1))          
+p <- ggplot(data = new_fits,
+            aes(d = default , m = svc_probs))
+p + geom_roc(n.cuts = 0, col = "orange") +
+  style_roc()
+```
+    
     e. Use the `train` function from the `caret` package to find an optimal cost
   parameter (`C`) in the range 0.01 to 10. Use `seq(0.01, 10, len = 20)`. 
+```{r}
+fit_control <- trainControl(method = "repeatedcv",
+                           number = 10, 
+                           repeats = 3)
+purchase_train <- train(Purchase ~ .,
+                     data = training,
+                     method = "svmLinear",     #apply hyperplane here 
+                     trControl = fit_control,
+                     tuneGrid = data.frame(C = 0.01:10)) #add the buffer area here. 10 means the larger area of buffer 
+purchase_train 
+```
+  
     f. Compute the training and test classification error.
     g. Repeat (b) - (d) using an SVM with a polynomial kernel with degree 2. 
     h. Which method would you choose?
