@@ -22,6 +22,7 @@ library(caret)     #look for ROC curve
 library(ISLR)
 library(janitor)
 library(plotROC)
+library(doMC)
 library(kernlab)   #kernel method for SVM
 theme_set(theme_bw())
 ```
@@ -71,18 +72,93 @@ purchase_train <- train(Purchase ~ .,
                      data = training,
                      method = "svmLinear",     #apply hyperplane here 
                      trControl = fit_control,
-                     tuneGrid = data.frame(C = 0.01:10)) #add the buffer area here. 10 means the larger area of buffer 
+                     tuneGrid = data.frame(C = seq(0.01,10,len  = 20))) #add the buffer area here. 10 means the larger area of buffer 
 purchase_train 
 ```
   
     f. Compute the training and test classification error.
+```{r}
+confusionMatrix(table(predict(purchase_train , newdata = testing), 
+                      testing$Purchase), positive = "MM")
+```
+    
     g. Repeat (b) - (d) using an SVM with a polynomial kernel with degree 2. 
-    h. Which method would you choose?
+```{r}
+purchase_ply <- ksvm(Purchase ~ ., 
+               data = training,
+               type = "C-svc", kernel = 'polydot', 
+               kpar = list(degree = 2, scale = .1),   #a polynomial kernel with degree 2
+               C = .01, prob.model = T)
+
+fits_svm <- predict(purchase_ply, newdata = training, type = "probabilities")
+svm_pred <- mutate(new_fits, svm_probs = fits_svm[, 2])
+p <- ggplot(data = svm_pred,
+            aes(d = default, m = svm_probs))
+p + geom_roc(n.cuts = 0, col = "pink") +
+  style_roc()
+
+```
+    
+```{r}
+confusionMatrix(table(predict(purchase_ply, newdata = testing), 
+                      testing$Purchase), positive = "MM")
+```
+  
     i. Repeat (b) - (d) using an SVM with a radial basis kernel. Train it. 
-    j. Using the best models from LDA, SVC, SVM (poly), and SVM (radial), 
-    compute the test error. 
-    k. Which method would you choose?
+```{r}
+purchase_svm_rad <- ksvm(Purchase ~ ., data = training,
+                   type = "C-svc", kernel = 'rbfdot', 
+                   kpar = list(sigma = .1), 
+                   prob.model = T)
+fits_svm_rad <- predict(purchase_svm_rad, newdata = training, type = "probabilities")
+
+svm_pred_rad <- mutate(svm_pred, svm_probs_rad = fits_svm_rad[, 2])
+p <- ggplot(data = svm_pred_rad,
+            aes(d = default, m = svm_probs_rad))
+p + geom_roc(n.cuts = 0) +
+  style_roc() 
+
+```
+```{r}
+confusionMatrix(table(predict(purchase_svm_rad, newdata = testing), 
+                      testing$Purchase), positive = "MM")
+
+```
+
+
 2. Train one of the SVM models using a single core, 2 cores, and 4 cores.
 Compare the speedup (if any). 
+
+```{r}
+registerDoMC(cores = 1)  # single core
+svm_cor1 <- system.time(ksvm(Purchase ~ ., 
+                         data = training,
+                         type = "C-svc", kernel = 'polydot', 
+                         kpar = list(degree = 2, scale = .1), 
+                         C = .01, prob.model = T))
+svm_cor1
+
+```
+```{r}
+registerDoMC(cores = 2)  # 2 cores
+svm_cor2 <- system.time(ksvm(Purchase ~ ., 
+                         data = training,
+                         type = "C-svc", kernel = 'polydot', 
+                         kpar = list(degree = 2, scale = .1), 
+                         C = .01, prob.model = T))
+svm_cor2
+
+```
+
+```{r}
+registerDoMC(cores = 4)  # 4 cores
+svm_cor4 <- system.time(ksvm(Purchase ~ ., 
+                         data = training,
+                         type = "C-svc", kernel = 'polydot', 
+                         kpar = list(degree = 2, scale = .1), 
+                         C = .01, prob.model = T))
+svm_cor4
+
+```
 3. You might want to look at `rbenchmark` or `microbenchmark` packages for 
-timing. 
+timing.
